@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<log4j:configuration>
+
+   <appender name="Console" class="org.apache.log4j.ConsoleAppender">
+      <layout class="org.apache.log4j.PatternLayout">
+         <param name="ConversionPattern" value="%d{dd-MM-yyyy HH:mm:ss} %5p %C{1} %M - %m%n"/>
+      </layout>
+   </appender>
+
+   <appender name="AppLogFile" class="org.apache.log4j.DailyRollingFileAppender">
+      <param name="DatePattern" value="'.'yyyy-MM-dd"/>
+      <param name="File" value="logs/ibMsgLogging.log"/>
+      <param name="Append" value="true"/>
+      <layout class="org.apache.log4j.PatternLayout">
+         <param name="ConversionPattern" value="%C{1} %M %5p-[%d{dd-MM-yyyy HH:mm:ss}]-%m%n"/>
+      </layout>
+   </appender>
+
+   <category name="com.ibsoft">
+      <priority value="INFO"/>
+   </category>
+
+   <root>
+      <priority value="INFO"/>
+      <appender-ref ref="Console"/>
+      <appender-ref ref="AppLogFile"/>
+   </root>
+</log4j:configuration>
