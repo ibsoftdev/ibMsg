@@ -1,4 +1,4 @@
-package com.ibsoft.util.mail;
+package com.ibsoft.ibMsg.util.mail;
 
 import javax.mail.internet.AddressException;
 import javax.mail.internet.InternetAddress;

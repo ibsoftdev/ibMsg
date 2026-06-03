@@ -1,7 +1,7 @@
 package com.ibsoft.ibMsg.model;
 
 import com.ibsoft.ibMsg.exception.MsgException;
-import com.ibsoft.util.mail.MailUtil;
+import com.ibsoft.ibMsg.util.mail.MailUtil;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
