@@ -56,11 +56,13 @@ public class ibMsgServices {
 
    public PushMessage getPushMessage(Long id_msg) throws Exception {
 
-      String sql = "SELECT mepu_meca_nu_campana, mepu_nu_mensaje,meme_tx_titulo,meme_tx_cuerpo,mepu_id,meme_time_next \n" +
-                    "  FROM ment_push_msg,ment_mensaje \n" +
-                     "    WHERE mepu_meca_nu_campana = meme_meca_nu_campana\n" +
-                     "      and mepu_nu_mensaje = meme_nu_mensaje\n" +
-                     "      and mepu_id = ?";
+      String sql = "SELECT mepu_meca_nu_campana, mepu_nu_mensaje, meme_tx_titulo, meme_tx_cuerpo, mepu_id, meme_time_next,\n" +
+            "              NVL((SELECT MAX(metr_nu_intento) FROM ment_try_push_msg WHERE metr_id = mepu_id), 0) AS metr_nu_intento,\n" +
+            "              meme_cd_channel" +
+            "  FROM ment_push_msg, ment_mensaje\n" +
+            "    WHERE mepu_meca_nu_campana = meme_meca_nu_campana\n" +
+            "      and mepu_nu_mensaje = meme_nu_mensaje\n" +
+            "      and mepu_id = ?";
 
       PushMessage pushMessage = jdbcTemplate.queryForObject(sql, new PushMessageMapper(), (Object[]) new Long[]{id_msg});
       //pushMessage.setParamMsgs( getParamMSGs(pushMessage.getId()) );
