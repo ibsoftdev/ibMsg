@@ -7,16 +7,14 @@ public class AddresseePushMsg {
    private String addresses_cc;
    private String addresses_bcc;
    private String addresses_from;
-   private Integer type;
 
    public AddresseePushMsg() {
    }
 
-   public AddresseePushMsg(Long id_msg, String addresses_to, String addresses_from, Integer type) {
+   public AddresseePushMsg(Long id_msg, String addresses_to, String addresses_from) {
       this.id_msg = id_msg;
       this.addresses_to = addresses_to;
       this.addresses_from = addresses_from;
-      this.type = type;
    }
 
    public Long getId_msg() {
@@ -57,13 +55,5 @@ public class AddresseePushMsg {
 
    public void setAddresses_from(String addresses_from) {
       this.addresses_from = addresses_from;
-   }
-
-   public Integer getType() {
-      return type;
-   }
-
-   public void setType(Integer type) {
-      this.type = type;
    }
 }

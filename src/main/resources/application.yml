@@ -22,6 +22,12 @@ server:
 logging:
   config: classpath:log4j.xml
 
+# Ambiente de envio: MECH_DEFAULT_TO tiene prioridad; sin el, PR usa destinatario del mensaje; otro env exige default_to.
+com:
+  ibsoft:
+    ibMsg:
+      app: DE
+
 # Pool JDBC (Tomcat embebido). Misma sección; sin JNDI.
 datasource:
   jndi:

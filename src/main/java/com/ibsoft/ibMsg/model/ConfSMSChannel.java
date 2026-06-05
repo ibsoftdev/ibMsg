@@ -27,11 +27,13 @@ import org.apache.http.impl.client.HttpClients;
 @Service("SMSChannelService")
 public class ConfSMSChannel extends ConfChannel {
 
+   private static final String PRODUCTION_ENV = "PR";
+
    private static Log logger = LogFactory.getLog(ConfSMSChannel.class);
 
    private final JsonMapper jsonMapper = JsonMapper.builder().build();
 
-   @Value("${com.ibsoft.ibMsgEnv.app_env:DE}")
+   @Value("${com.ibsoft.ibMsg.app:DE}")
    private String appEnv;
 
    @Override
@@ -39,25 +41,36 @@ public class ConfSMSChannel extends ConfChannel {
       logger.info("ConfSMSChannel.sendMessage");
 
       for (AddresseePushMsg addr: pushMsg.getAddresseeMsgs()){
-         logger.info("To:"+addr.getAddresses_to()+" From:"+addr.getAddresses_from());
-         sendSMS(pushMsg, addr);
+         String celdestino = resolveDestination(addr.getAddresses_to());
+         logger.info("SMS to=" + celdestino + " from=" + addr.getAddresses_from());
+         sendSMS(pushMsg, celdestino);
       }
 
    }
 
-   public void sendSMS(PushMessage pushMsg, AddresseePushMsg addr) throws MsgException{
+   /**
+    * MECH_DEFAULT_TO valido tiene prioridad.
+    * addresses_to del mensaje solo si env=PR y no hay MECH_DEFAULT_TO valido.
+    * Otro ambiente sin default_to: error.
+    */
+   private String resolveDestination(String addressesTo) throws MsgException {
+      if (hasValidDefaultTo()) {
+         return getDefaultTo();
+      }
+      if (PRODUCTION_ENV.equalsIgnoreCase(appEnv)) {
+         return addressesTo;
+      }
+      throw new MsgException(
+            "Se debe configurar MECH_DEFAULT_TO en MENT_CHANNEL para el ambiente de Desarrollo");
+   }
+
+   public void sendSMS(PushMessage pushMsg, String celdestino) throws MsgException{
       try{
          //Esto se hace para no validar el certificado. En este caso no esta firmado
          SSLContextBuilder builder = new SSLContextBuilder();
          builder.loadTrustMaterial(null, new TrustSelfSignedStrategy());
          SSLConnectionSocketFactory sslsf = new SSLConnectionSocketFactory(builder.build(), NoopHostnameVerifier.INSTANCE);
          CloseableHttpClient httpclient = HttpClients.custom().setSSLSocketFactory(sslsf).build();
-
-         String celdestino = addr.getAddresses_to();
-         if ((getDefaultTo() != null) && (getDefaultTo().length()>0))
-            celdestino = getDefaultTo();
-         else if (!"PR".equalsIgnoreCase(appEnv))
-            throw new MsgException("Se debe configurar un 'default_to' para el ambiente de Desarrollo");
 
          String[] cel_split = celdestino.split(";");
 

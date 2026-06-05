@@ -8,233 +8,225 @@ import org.apache.commons.logging.LogFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import jakarta.activation.DataHandler;
 import jakarta.mail.*;
 import jakarta.mail.internet.*;
-import jakarta.activation.DataHandler;
 import jakarta.mail.util.ByteArrayDataSource;
 import java.io.File;
 import java.io.IOException;
 import java.util.Date;
 import java.util.Properties;
-import java.util.StringTokenizer;
 
 @Service("MailChannelService")
 public class ConfMailChannel extends ConfChannel {
 
-   private static Log logger = LogFactory.getLog(ConfMailChannel.class);
+   private static final Log logger = LogFactory.getLog(ConfMailChannel.class);
+   private static final String PRODUCTION_ENV = "PR";
 
-   protected MailUtil mus = MailUtil.getInstance();
+   private final MailUtil mailUtil = MailUtil.getInstance();
 
-   @Value("${com.ibsoft.ibMsgEnv.app_env:DE}")
+   @Value("${com.ibsoft.ibMsg.app:DE}")
    private String appEnv;
 
    @Override
    public void sendMessage(PushMessage pushMsg) throws MsgException {
-      for (AddresseePushMsg addr: pushMsg.getAddresseeMsgs()){
-         sendMail(pushMsg, addr);
+      try (SmtpConnection smtp = SmtpConnection.open(this)) {
+         for (AddresseePushMsg addr : pushMsg.getAddresseeMsgs()) {
+            sendMail(pushMsg, addr, smtp);
+         }
+      } catch (MessagingException e) {
+         throw new MsgException("Error SMTP: " + e.getMessage(), e);
+      } catch (IOException e) {
+         throw new MsgException("Error leyendo adjuntos: " + e.getMessage(), e);
       }
-
    }
 
-   public void sendMail(PushMessage pushMsg, AddresseePushMsg addr) throws MsgException {
-      Session session = null;
-      Transport transport = null;
-      //int totalEmails = mailStructCollection.size();
-      int count = 0;
-      int sendFailedExceptionCount = 0;
+   private void sendMail(PushMessage pushMsg, AddresseePushMsg addr, SmtpConnection smtp)
+         throws MsgException, MessagingException, IOException {
+      String from = addr.getAddresses_from();
+      Recipients recipients = resolveRecipients(new Recipients(
+            addr.getAddresses_to(),
+            addr.getAddresses_cc(),
+            addr.getAddresses_bcc()));
+
+      logger.info("mail from=" + from + " to=" + recipients.to()
+            + " cc=" + recipients.cc() + " bcc=" + recipients.bcc());
+
+      InternetAddress fromAddress;
+      InternetAddress[] toAddress;
+      InternetAddress[] ccAddress;
+      InternetAddress[] bccAddress;
       try {
-         count++;
-
-         if ((transport == null) || (session == null)) {
-            Properties props = new Properties();
-            String server = getUrlServer();
-            String host = server.substring(0,getUrlServer().lastIndexOf(":"));
-            String port = server.substring(getUrlServer().lastIndexOf(":")+1);
-            props.put("mail.smtp.host", host);
-            props.put("mail.smtp.port", port);
-
-            session = Session.getDefaultInstance(props, null);
-            transport = session.getTransport("smtp");
-            //todo: Deshabilitado para pruebas
-            /*if ((getUserServer() != null) && (getUserServer().length() > 0)) {
-               props.put("mail.smtp.auth", "true");
-               props.put("mail.smtp.starttls.enable", "true");
-               transport.connect(server, getUserServer(), ""*//*getPassword()*//*);
-            }
-            else {
-               transport.connect();
-            }*/
-         }
-
-         String from = addr.getAddresses_from();
-         String to = addr.getAddresses_to();
-         String defaultto = getDefaultTo();
-         String cc = "";
-         String bcc = "";
-         String subject = pushMsg.getSubject();
-         String message = pushMsg.getBody();
-
-         //actualmente las direcciones vienen con el formato: to:mail1;mail2|cc:mailcc1;mailcc2|bcc:mailbcc1;mailbcc2
-         logger.info("mails original:"+to);
-         StringTokenizer tokenizer = new StringTokenizer(to, "\\|");
-         while (tokenizer.hasMoreTokens()){
-            String mails = tokenizer.nextToken();
-            if (mails.contains("to:")){
-               to = mails.substring(3);
-            }
-            else if (mails.contains("cc:")){
-               cc = mails.substring(3);
-            }
-            else if (mails.contains("bcc:")){
-               bcc = mails.substring(4);
-            }
-         }
-         logger.info("mails despues. to:"+to+" cc:"+cc+" bcc:"+bcc);
-
-         //esto obliga a que las direcciones de envio sean las que estan en la tabla MENT_CHANEL, cuando tiene valor
-         if (defaultto != null && !defaultto.equals("")) {
-            to = defaultto;
-            cc = null;
-            bcc = null;
-         }
-         else if (!"PR".equalsIgnoreCase(appEnv))
-            throw new MsgException("Se debe configurar un 'default_to' para el ambiente de Desarrollo");
-
-         try {
-            // this will also check for email error
-            mus.checkGoodEmail(from);
-            InternetAddress fromAddress = new InternetAddress(from);
-            InternetAddress[] toAddress = toJakartaAddresses(MailUtil.getInternetAddressEmails(to));
-            InternetAddress[] ccAddress = toJakartaAddresses(MailUtil.getInternetAddressEmails(cc));
-            InternetAddress[] bccAddress = toJakartaAddresses(MailUtil.getInternetAddressEmails(bcc));
-            if ((toAddress == null) && (ccAddress == null) &&
-                  (bccAddress == null)) {
-               throw new MsgException("Cannot send mail since all To," +
-                     " Cc, Bcc addresses are empty.");
-            }
-
-            // create a message
-            Message msg = new MimeMessage(session);
-            msg.setSentDate(new Date());
-            msg.setFrom(fromAddress);
-
-            if (toAddress != null) {
-               msg.setRecipients(Message.RecipientType.TO, toAddress);
-            }
-            if (ccAddress != null) {
-               msg.setRecipients(Message.RecipientType.CC, ccAddress);
-            }
-            if (bccAddress != null) {
-               msg.setRecipients(Message.RecipientType.BCC, bccAddress);
-            }
-            //This code is use to display unicode in Subject
-            msg.setSubject(MimeUtility.encodeText(subject,
-                  "iso-8859-1", "Q"));
-
-            // Cuando se tiene archivos adjuntos a enviar, se tiene utilizar MimeMultipart que tenga el mensaje y el archivo,
-            // caso contrario con setText se coloca el mensaje.
-            // Nota: para soportar archivos pdf se debe utilizar javamail 1.4
-            if (pushMsg.getAttachmentMsgs() == null || pushMsg.getAttachmentMsgs().size() == 0){
-               MimeMultipart mp = new MimeMultipart();
-               //Texto
-               BodyPart text = new MimeBodyPart();
-               text.setContent( message, "text/html; charset=utf-8" );
-               mp.addBodyPart(text);
-               msg.setContent(mp);
-            }
-            else {
-               MimeMultipart mp = new MimeMultipart();
-               //Texto
-               BodyPart text = new MimeBodyPart();
-               text.setContent( message, "text/html; charset=utf-8" );
-               //text.setText(message);
-               mp.addBodyPart(text);
-               // Attachments
-               for (AttachmentPushMsg attachmentPushMsg : pushMsg.getAttachmentMsgs()) {
-                  String filePath = attachmentPushMsg.getFilePath();
-                  byte[] fileContent = FileUtils.readFileToByteArray(new File(filePath));
-                  String extension = filePath.substring(filePath.lastIndexOf(".")+1);
-                  String fileName = filePath.substring(filePath.lastIndexOf(File.separator)+1);
-                  BodyPart atach = new MimeBodyPart();
-                  atach.setDataHandler(new DataHandler(new ByteArrayDataSource(fileContent, "application/octet-stream")));
-                  atach.setFileName(fileName);
-                  mp.addBodyPart(atach);
-               }
-
-               msg.setContent(mp);
-            }
-
-            msg.saveChanges();
-
-            //todo: Deshabilitado para pruebas
-            //transport.sendMessage(msg, msg.getAllRecipients());
-
-            // now check if sent 100 emails, then close connection (transport)
-            if ((count % MailUtil.MAX_MESSAGES_PER_TRANSPORT) == 0) {
-               try {
-                  if (transport != null) transport.close();
-               }
-               catch (MessagingException ex) {
-                  throw new MsgException(ex.getMessage());
-               }
-               transport = null;
-               session = null;
-            }
-         }
-         catch (SendFailedException ex) {
-            sendFailedExceptionCount++;
-            logger.error("SendFailedException has occured.", ex);
-            logger.warn("SendFailedException has occured. Detail info:");
-            logger.warn("from = " + from);
-            logger.warn("to = " + to);
-            logger.warn("cc = " + cc);
-            logger.warn("bcc = " + bcc);
-            //logger.warn("subject = " + subject);
-            //logger.info("message = " + message);
-            /*if ((totalEmails != 1) && (sendFailedExceptionCount > 10)) {
-               throw ex;// this may look redundant, but it is not :-)
-            }
-            else if (totalEmails == 1){
-               throw ex;// this may look redundant, but it is not :-)
-            }*/
-            throw new MsgException(ex.getMessage());
-         }
-         catch (MessagingException mex) {
-            logger.error("MessagingException has occured.", mex);
-            logger.warn("MessagingException has occured. Detail info:");
-            logger.warn("from = " + from);
-            logger.warn("to = " + to);
-            logger.warn("cc = " + cc);
-            logger.warn("bcc = " + bcc);
-            logger.warn("subject = " + subject);
-            logger.info("message = " + message);
-            //throw mex;// this may look redundant, but it is not :-)
-            throw new MsgException(mex.getMessage());
-         } catch (IOException e) {
-            logger.error("IOException has occured.", e);
-            throw new MsgException(e.getMessage());
-         }
-
+         mailUtil.checkGoodEmail(from);
+         fromAddress = new InternetAddress(from);
+         toAddress = toJakartaAddresses(MailUtil.getInternetAddressEmails(recipients.to()));
+         ccAddress = toJakartaAddresses(MailUtil.getInternetAddressEmails(recipients.cc()));
+         bccAddress = toJakartaAddresses(MailUtil.getInternetAddressEmails(recipients.bcc()));
+      } catch (javax.mail.internet.AddressException e) {
+         throw new MsgException("Direccion de correo invalida: " + e.getMessage(), e);
       }
-      catch (Exception e){
-         throw new MsgException(e.getMessage());
+
+      if (toAddress == null && ccAddress == null && bccAddress == null) {
+         throw new MsgException("Cannot send mail since all To, Cc, Bcc addresses are empty.");
       }
-      finally {
-         try {
-            if (transport != null) transport.close();
+
+      MimeMessage msg = buildMimeMessage(smtp.session(), pushMsg, fromAddress,
+            toAddress, ccAddress, bccAddress);
+      smtp.send(msg);
+   }
+
+   /**
+    * MECH_DEFAULT_TO valido tiene prioridad (sin cc/bcc).
+    * addresses_to del mensaje solo si env=PR y no hay MECH_DEFAULT_TO valido.
+    * Otro ambiente sin default_to: error.
+    */
+   private Recipients resolveRecipients(Recipients parsed) throws MsgException {
+      if (hasValidDefaultTo()) {
+         return new Recipients(getDefaultTo(), null, null);
+      }
+      if (PRODUCTION_ENV.equalsIgnoreCase(appEnv)) {
+         return parsed;
+      }
+      throw new MsgException(
+            "Se debe configurar MECH_DEFAULT_TO en MENT_CHANNEL para el ambiente de Desarrollo");
+   }
+
+   private MimeMessage buildMimeMessage(Session session, PushMessage pushMsg,
+         InternetAddress from, InternetAddress[] to, InternetAddress[] cc, InternetAddress[] bcc)
+         throws MessagingException, IOException {
+      MimeMessage msg = new MimeMessage(session);
+      msg.setSentDate(new Date());
+      msg.setFrom(from);
+      if (to != null) {
+         msg.setRecipients(Message.RecipientType.TO, to);
+      }
+      if (cc != null) {
+         msg.setRecipients(Message.RecipientType.CC, cc);
+      }
+      if (bcc != null) {
+         msg.setRecipients(Message.RecipientType.BCC, bcc);
+      }
+      msg.setSubject(MimeUtility.encodeText(pushMsg.getSubject(), "iso-8859-1", "Q"));
+      msg.setContent(buildContent(pushMsg));
+      msg.saveChanges();
+      return msg;
+   }
+
+   private MimeMultipart buildContent(PushMessage pushMsg) throws IOException, MessagingException {
+      MimeMultipart multipart = new MimeMultipart();
+      MimeBodyPart text = new MimeBodyPart();
+      text.setContent(pushMsg.getBody(), "text/html; charset=utf-8");
+      multipart.addBodyPart(text);
+
+      if (pushMsg.getAttachmentMsgs() != null) {
+         for (AttachmentPushMsg attachment : pushMsg.getAttachmentMsgs()) {
+            String filePath = attachment.getFilePath();
+            byte[] fileContent = FileUtils.readFileToByteArray(new File(filePath));
+            String fileName = filePath.substring(filePath.lastIndexOf(File.separatorChar) + 1);
+            MimeBodyPart attach = new MimeBodyPart();
+            attach.setDataHandler(new DataHandler(
+                  new ByteArrayDataSource(fileContent, "application/octet-stream")));
+            attach.setFileName(fileName);
+            multipart.addBodyPart(attach);
          }
-         catch (MessagingException ex) {
-            logger.error("MessagingException has occured.", ex);
-            throw new MsgException(ex.getMessage());
+      }
+      return multipart;
+   }
+
+   private record Recipients(String to, String cc, String bcc) {
+   }
+
+   /** Conexion SMTP reutilizable por envio (una por llamada a sendMessage). */
+   private static final class SmtpConnection implements AutoCloseable {
+
+      private final Session session;
+      private final Transport transport;
+
+      private SmtpConnection(Session session, Transport transport) {
+         this.session = session;
+         this.transport = transport;
+      }
+
+      static SmtpConnection open(ConfMailChannel channel) throws MessagingException {
+         Properties props = channel.buildSmtpProperties();
+         Session session = Session.getInstance(props, null);
+         Transport transport = session.getTransport("smtp");
+         channel.connectTransport(transport);
+         return new SmtpConnection(session, transport);
+      }
+
+      Session session() {
+         return session;
+      }
+
+      void send(MimeMessage message) throws MessagingException {
+         transport.sendMessage(message, message.getAllRecipients());
+      }
+
+      @Override
+      public void close() throws MessagingException {
+         if (transport != null) {
+            transport.close();
          }
-         /*if (totalEmails != 1) {
-            logger.info("sendMail: totalEmails = " + totalEmails + " sent count = "
-                  + count);
-         }*/
       }
    }
 
-   /** Puente ibCommons (javax.mail) → Jakarta Mail en Spring Boot 3. */
+   private Properties buildSmtpProperties() {
+      Properties props = new Properties();
+      props.put("mail.smtp.host", smtpHost());
+      props.put("mail.smtp.port", smtpPort());
+      String port = smtpPort();
+      if ("587".equals(port) || "465".equals(port)) {
+         props.put("mail.smtp.starttls.enable", "true");
+      }
+      if (smtpUser() != null) {
+         props.put("mail.smtp.auth", "true");
+      }
+      return props;
+   }
+
+   private void connectTransport(Transport transport) throws MessagingException {
+      String host = smtpHost();
+      int port = Integer.parseInt(smtpPort());
+      String user = smtpUser();
+      if (user != null) {
+         transport.connect(host, port, user, smtpPassword());
+      } else {
+         transport.connect(host, port, null, null);
+      }
+   }
+
+   private String smtpHost() {
+      String server = getUrlServer();
+      int colon = server.lastIndexOf(':');
+      return colon > 0 ? server.substring(0, colon) : server;
+   }
+
+   private String smtpPort() {
+      String server = getUrlServer();
+      int colon = server.lastIndexOf(':');
+      return colon > 0 ? server.substring(colon + 1) : "25";
+   }
+
+   /** MECH_USER_SERVER: usuario o usuario||clave */
+   private String smtpUser() {
+      String userServer = getUserServer();
+      if (userServer == null || userServer.isBlank()) {
+         return null;
+      }
+      int sep = userServer.indexOf("||");
+      return sep >= 0 ? userServer.substring(0, sep) : userServer;
+   }
+
+   private String smtpPassword() {
+      String userServer = getUserServer();
+      if (userServer == null || userServer.isBlank()) {
+         return null;
+      }
+      int sep = userServer.indexOf("||");
+      return sep >= 0 ? userServer.substring(sep + 2) : "";
+   }
+
    private static InternetAddress[] toJakartaAddresses(javax.mail.internet.InternetAddress[] legacy)
          throws AddressException {
       if (legacy == null) {

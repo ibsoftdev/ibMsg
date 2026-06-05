@@ -6,6 +6,7 @@ import org.springframework.jdbc.core.RowMapper;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Collections;
 import java.util.List;
 
 public class PushMessageMapper implements RowMapper<PushMessage> {
@@ -28,7 +29,7 @@ public class PushMessageMapper implements RowMapper<PushMessage> {
 
       pushmsg.setParamMsgs(getParamMSGs(pushmsg.getId()));
       pushmsg.setAddresseeMsgs(getAddressee(pushmsg.getId()));
-      pushmsg.setAddresseeCCMsgs(getAddresseeCC(pushmsg.getId()));
+      pushmsg.setAddresseeCCMsgs(Collections.emptyList());
       pushmsg.setAttachmentMsgs(getAttachmentMSGs(pushmsg.getId()));
 
       return pushmsg;
@@ -51,33 +52,22 @@ public class PushMessageMapper implements RowMapper<PushMessage> {
    }
 
    public List<AddresseePushMsg> getAddressee(Long id_msg){
-      String sql = "SELECT meap_mepu_id, meap_addresses_to, meap_addresses_from,meap_type FROM MENT_ADDRESSEE_PUSH_MSG WHERE meap_type = 1 AND meap_mepu_id = ?";
+      String sql = "SELECT meap_mepu_id, meap_addresses_to, meap_addresses_cc, meap_addresses_bcc, "
+            + "meap_addresses_from FROM MENT_ADDRESSEE_PUSH_MSG WHERE meap_mepu_id = ?";
 
-      return jdbcTemplate.query(sql,
-              (rs, rowNum) ->
-                      new AddresseePushMsg(
-                              rs.getLong("meap_mepu_id"),
-                              rs.getString("meap_addresses_to"),
-                              rs.getString("meap_addresses_from"),
-                              rs.getInt("meap_type")
-                      ),
-              (Object[]) new Long[]{id_msg}
-      );
+      return jdbcTemplate.query(sql, mapAddressee(), (Object[]) new Long[]{id_msg});
    }
 
-   public List<AddresseePushMsg> getAddresseeCC(Long id_msg){
-      String sql = "SELECT meap_mepu_id, meap_addresses_to, meap_addresses_from,meap_type FROM MENT_ADDRESSEE_PUSH_MSG WHERE meap_type = 2 AND meap_mepu_id = ?";
-
-      return jdbcTemplate.query(sql,
-              (rs, rowNum) ->
-                      new AddresseePushMsg(
-                              rs.getLong("meap_mepu_id"),
-                              rs.getString("meap_addresses_to"),
-                              rs.getString("meap_addresses_from"),
-                              rs.getInt("meap_type")
-                      ),
-              (Object[]) new Long[]{id_msg}
-      );
+   private static RowMapper<AddresseePushMsg> mapAddressee() {
+      return (rs, rowNum) -> {
+         AddresseePushMsg addressee = new AddresseePushMsg();
+         addressee.setId_msg(rs.getLong("meap_mepu_id"));
+         addressee.setAddresses_to(rs.getString("meap_addresses_to"));
+         addressee.setAddresses_cc(rs.getString("meap_addresses_cc"));
+         addressee.setAddresses_bcc(rs.getString("meap_addresses_bcc"));
+         addressee.setAddresses_from(rs.getString("meap_addresses_from"));
+         return addressee;
+      };
    }
 
    public List<AttachmentPushMsg> getAttachmentMSGs(Long id_msg){

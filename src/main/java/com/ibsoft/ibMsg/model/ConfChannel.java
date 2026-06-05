@@ -50,5 +50,10 @@ public abstract class ConfChannel {
 
    public void setDefaultTo(String defaultTo) { this.defaultTo = defaultTo; }
 
+   protected boolean hasValidDefaultTo() {
+      String defaultTo = getDefaultTo();
+      return defaultTo != null && !defaultTo.isBlank();
+   }
+
    public abstract void sendMessage(PushMessage pushMsg) throws MsgException;
 }

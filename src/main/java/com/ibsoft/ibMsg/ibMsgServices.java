@@ -263,15 +263,16 @@ public class ibMsgServices {
       //trxStatus.releaseSavepoint(savepoint);
       //}
 
-      jdbcTemplate.batchUpdate("INSERT INTO ment_addressee_push_msg(meap_mepu_id,meap_addresses_to,meap_addresses_from,meap_type) values(?,?,?,?)", new BatchPreparedStatementSetter() {
+      jdbcTemplate.batchUpdate("INSERT INTO ment_addressee_push_msg(meap_mepu_id,meap_addresses_to,meap_addresses_cc,meap_addresses_bcc,meap_addresses_from) values(?,?,?,?,?)", new BatchPreparedStatementSetter() {
 
          @Override
          public void setValues(PreparedStatement pStmt, int j) throws SQLException {
             AddresseePushMsg addresseePushMsg = pushMsg.getAddresseeMsgs().get(j);
             pStmt.setLong(1, idPushMsg);
             pStmt.setString(2, addresseePushMsg.getAddresses_to());
-            pStmt.setString(3, addresseePushMsg.getAddresses_from());
-            pStmt.setInt(4, addresseePushMsg.getType());
+            pStmt.setString(3, addresseePushMsg.getAddresses_cc());
+            pStmt.setString(4, addresseePushMsg.getAddresses_bcc());
+            pStmt.setString(5, addresseePushMsg.getAddresses_from());
          }
 
          @Override

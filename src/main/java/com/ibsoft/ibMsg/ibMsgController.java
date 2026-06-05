@@ -35,12 +35,8 @@ public class ibMsgController {
     "fe_inicio": '14-03-2023 16:00:00',
     "addresseeMsgs": [
               { "addresses_to":"cuchivano@gmail.com",
+                "addresses_cc":"cuchivano@yahoo.com",
                 "addresses_from":"ibsoftdev.info@gmail.com"
-                "type":1
-              },
-              { "addresses_to":"cuchivano@yahoo.com",
-                "addresses_from":"ibsoftdev.info@gmail.com"
-                "type":2
               }
              ],
     "paramMsgs":[
